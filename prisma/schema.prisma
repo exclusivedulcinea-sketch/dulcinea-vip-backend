@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Negocio {
+  id        String   @id @default(cuid())
+  nombre    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios                Usuario[]
+  productos               Producto[]
+  movimientosInventario   MovimientoInventario[]
+  ventas                  Venta[]
+  detallesVenta           DetalleVenta[]
+  cajasRegistro           CajaRegistro[]
+  proveedores             Proveedor[]
+  compras                 Compra[]
+  detallesCompra          DetalleCompra[]
+  solicitudesRecuperacion SolicitudRecuperacionPin[]
+
+  @@map("negocios")
+}
+
+model Usuario {
+  id        String     @id @default(cuid())
+  username  String     @unique
+  pin       String
+  nombre        String
+  nombreNegocio String?
+  rol           RolUsuario @default(OPERADOR)
+  activo    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  negocioId String?
+  negocio   Negocio? @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  movimientos    MovimientoInventario[]
+  ventas         Venta[]          @relation("VentasRealizadas")
+  ventasAnuladas Venta[]          @relation("VentasAnuladas")
+  cajas          CajaRegistro[]
+  compras        Compra[]         @relation("ComprasRealizadas")
+  comprasAprobadas Compra[]       @relation("ComprasAprobadas")
+  comprasAnuladas  Compra[]       @relation("ComprasAnuladas")
+
+  @@map("usuarios")
+}
+
+model Producto {
+  id           String    @id @default(cuid())
+  codigo       String    // Ya no es unique a nivel global
+  nombre       String
+  categoria    Categoria
+  marca        String?
+  unidad       Unidad
+  precioCompra Decimal   @db.Decimal(10, 2)
+  precioVenta  Decimal   @db.Decimal(10, 2)
+  stockActual  Decimal   @default(0) @db.Decimal(10, 3)
+  stockMinimo  Decimal   @default(0) @db.Decimal(10, 3)
+  activo       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  movimientos   MovimientoInventario[]
+  detallesVenta DetalleVenta[]
+  detallesCompra DetalleCompra[]
+
+  @@unique([negocioId, codigo]) // El codigo es unico POR negocio
+  @@map("productos")
+}
+
+model MovimientoInventario {
+  id             String          @id @default(cuid())
+  productoId     String
+  tipoMovimiento TipoMovimiento
+  cantidad       Decimal         @db.Decimal(10, 3)
+  observacion    String?
+  usuarioId      String?
+  usuarioNombre  String
+  fecha          DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  producto Producto  @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  usuario  Usuario?  @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@map("movimientos_inventario")
+}
+
+enum Categoria {
+  LICOR
+  CERVEZA
+  ENERGIZANTE
+  GASEOSA
+  AGUA
+  INSUMO
+  OTRO
+}
+
+enum Unidad {
+  UNIDAD
+  BOTELLA
+  CAJA
+  LATA
+  LITRO
+  MILILITRO
+  KILOGRAMO
+  GRAMO
+  PAQUETE
+  DOCENA
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+  AJUSTE
+}
+
+enum RolUsuario {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  SUPERVISOR
+  OPERADOR
+  BARTENDER
+}
+
+// ─── POS ──────────────────────────────────────────────────────────────────────
+
+model Venta {
+  id           String       @id @default(cuid())
+  numeroVenta  String       // Ya no es unique global
+  usuarioId    String
+  cajeroNombre String
+  fecha        DateTime     @default(now())
+  subtotal     Decimal      @db.Decimal(12, 2)
+  descuento    Decimal      @default(0) @db.Decimal(12, 2)
+  total        Decimal      @db.Decimal(12, 2)
+  metodoPago   MetodoPago
+  estado       EstadoVenta  @default(COMPLETADA)
+  observacion  String?
+  anuladaEn    DateTime?
+  anuladaPorId String?
+  motivoAnulacion String?
+  cajaId       String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  usuario      Usuario        @relation("VentasRealizadas", fields: [usuarioId], references: [id], onDelete: Restrict)
+  anuladaPor   Usuario?       @relation("VentasAnuladas", fields: [anuladaPorId], references: [id], onDelete: SetNull)
+  detalles     DetalleVenta[]
+  caja         CajaRegistro?  @relation(fields: [cajaId], references: [id], onDelete: SetNull)
+
+  @@unique([negocioId, numeroVenta])
+  @@map("ventas")
+}
+
+model DetalleVenta {
+  id             String  @id @default(cuid())
+  ventaId        String
+  productoId     String
+  productoNombre String
+  productoCodigo String
+  cantidad       Decimal @db.Decimal(10, 3)
+  precioUnitario Decimal @db.Decimal(12, 2)
+  subtotal       Decimal @db.Decimal(12, 2)
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  venta    Venta    @relation(fields: [ventaId], references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@map("detalle_ventas")
+}
+
+model CajaRegistro {
+  id            String        @id @default(cuid())
+  usuarioId     String
+  cajeroNombre  String
+  fechaApertura DateTime      @default(now())
+  montoApertura Decimal       @db.Decimal(12, 2)
+  fechaCierre   DateTime?
+  montoCierre   Decimal?      @db.Decimal(12, 2)
+  totalVentas   Decimal?      @db.Decimal(12, 2)
+  estado        EstadoCaja    @default(ABIERTA)
+  observacion   String?
+  createdAt     DateTime      @default(now())
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  usuario  Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  ventas   Venta[]
+
+  @@map("caja_registros")
+}
+
+enum MetodoPago {
+  EFECTIVO
+  NEQUI
+  DAVIPLATA
+  TRANSFERENCIA
+  TARJETA
+  MIXTO
+}
+
+enum EstadoVenta {
+  COMPLETADA
+  ANULADA
+}
+
+enum EstadoCaja {
+  ABIERTA
+  CERRADA
+}
+
+// ─── COMPRAS ──────────────────────────────────────────────────────────────────
+
+model Proveedor {
+  id         String   @id @default(cuid())
+  nombre     String
+  nit        String   // Ya no es unique global
+  telefono   String
+  correo     String?
+  direccion  String?
+  contacto   String?
+  activo     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  compras Compra[]
+
+  @@unique([negocioId, nit])
+  @@map("proveedores")
+}
+
+model Compra {
+  id            String       @id @default(cuid())
+  numeroCompra  String       // Ya no es unique global
+  proveedorId   String
+  usuarioId     String
+  usuarioNombre String
+  fechaCompra   DateTime     @default(now())
+  subtotal      Decimal      @db.Decimal(12, 2)
+  total         Decimal      @db.Decimal(12, 2)
+  observacion   String?
+  estado        EstadoCompra @default(BORRADOR)
+  aprobadaEn    DateTime?
+  aprobadaPorId String?
+  anuladaEn     DateTime?
+  anuladaPorId  String?
+  motivoAnulacion String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  proveedor   Proveedor      @relation(fields: [proveedorId], references: [id], onDelete: Restrict)
+  usuario     Usuario        @relation("ComprasRealizadas",  fields: [usuarioId],     references: [id], onDelete: Restrict)
+  aprobadaPor Usuario?       @relation("ComprasAprobadas",   fields: [aprobadaPorId], references: [id], onDelete: SetNull)
+  anuladaPor  Usuario?       @relation("ComprasAnuladas",    fields: [anuladaPorId],  references: [id], onDelete: SetNull)
+  detalles    DetalleCompra[]
+
+  @@unique([negocioId, numeroCompra])
+  @@map("compras")
+}
+
+model DetalleCompra {
+  id             String  @id @default(cuid())
+  compraId       String
+  productoId     String
+  productoNombre String
+  productoCodigo String
+  cantidad       Decimal @db.Decimal(10, 3)
+  costoUnitario  Decimal @db.Decimal(12, 2)
+  subtotal       Decimal @db.Decimal(12, 2)
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  compra   Compra   @relation(fields: [compraId],   references: [id], onDelete: Cascade)
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+
+  @@map("detalle_compras")
+}
+
+enum EstadoCompra {
+  BORRADOR
+  APROBADA
+  ANULADA
+}
+
+// ─── RECUPERACIÓN DE PIN ──────────────────────────────────────────────────────
+
+model SolicitudRecuperacionPin {
+  id            String   @id @default(cuid())
+  usuarioId     String
+  usuarioNombre String
+  username      String
+  estado        String   @default("PENDIENTE") // PENDIENTE | RESUELTA
+  creadaEn      DateTime @default(now())
+  resueltaEn    DateTime?
+
+  negocioId String
+  negocio   Negocio @relation(fields: [negocioId], references: [id], onDelete: Cascade)
+
+  @@map("solicitudes_recuperacion_pin")
+}
