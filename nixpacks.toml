@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_18", "openssl"]
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build", "npx prisma generate"]
+
+[start]
+cmd = "npx prisma migrate deploy && node dist/main"
