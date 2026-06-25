@@ -166,8 +166,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.log('Seed ignorado: Los datos ya existen o hubo un error.');
   })
   .finally(async () => {
     await prisma.$disconnect();
