@@ -8,10 +8,8 @@ import * as path from 'path';
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
 
-  // Ejecutar todos los dias a las 8 AM, Hora Colombia
-  @Cron('0 8 * * *', {
-    timeZone: 'America/Bogota',
-  })
+  // Ejecutar todos los dias a las 13:00 UTC (8 AM Hora Colombia)
+  @Cron('0 13 * * *')
   handleCron() {
     this.logger.log('Iniciando backup programado de la base de datos...');
     this.ejecutarBackup();
