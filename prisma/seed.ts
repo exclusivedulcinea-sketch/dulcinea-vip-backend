@@ -4,28 +4,47 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Creando negocio por defecto...');
-  const negocio = await prisma.negocio.create({
-    data: {
-      nombre: 'Dulcinea Exclusive VIP',
-    },
+  console.log('Buscando/creando negocio por defecto...');
+  let negocio = await prisma.negocio.findFirst({
+    where: { nombre: 'Dulcinea Exclusive VIP' },
   });
+
+  if (!negocio) {
+    negocio = await prisma.negocio.create({
+      data: {
+        nombre: 'Dulcinea Exclusive VIP',
+      },
+    });
+    console.log('Negocio creado: Dulcinea Exclusive VIP');
+  } else {
+    console.log('Negocio ya existe: Dulcinea Exclusive VIP');
+  }
 
   const negocioId = negocio.id;
 
-  console.log('Creando usuario Super Administrador...');
-  const hashedPinSuper = await bcrypt.hash('0000', 10);
-  await prisma.usuario.create({
-    data: {
-      username: 'nexora',
-      pin: hashedPinSuper,
-      nombre: 'Nexora Soft',
-      rol: 'SUPER_ADMIN',
-      negocioId: null, // Super admin no pertenece a un solo negocio
-    },
+  console.log('Verificando usuario Super Administrador...');
+  const superAdminExist = await prisma.usuario.findUnique({
+    where: { username: 'nexora' },
   });
 
-  // Crear usuarios con PIN hasheado
+  if (!superAdminExist) {
+    console.log('Creando usuario Super Administrador...');
+    const hashedPinSuper = await bcrypt.hash('0000', 10);
+    await prisma.usuario.create({
+      data: {
+        username: 'nexora',
+        pin: hashedPinSuper,
+        nombre: 'Nexora Soft',
+        rol: 'SUPER_ADMIN',
+        negocioId: null, // Super admin no pertenece a un solo negocio
+      },
+    });
+    console.log('Super Administrador creado: nexora / 0000');
+  } else {
+    console.log('Super Administrador ya existe: nexora');
+  }
+
+  // Crear usuarios con PIN hasheado si no existen
   const usuarios = [
     { username: 'julio',  pin: '1083', nombre: 'Julio',  rol: 'OWNER' as const, nombreNegocio: 'Dulcinea Exclusive VIP' },
     { username: 'robin',  pin: '1996', nombre: 'Robin',  rol: 'OWNER' as const, nombreNegocio: 'Dulcinea Exclusive VIP' },
@@ -34,18 +53,26 @@ async function main() {
   ];
 
   for (const u of usuarios) {
-    const hashedPin = await bcrypt.hash(u.pin, 10);
-    await prisma.usuario.create({
-      data: {
-        username: u.username,
-        pin: hashedPin,
-        nombre: u.nombre,
-        rol: u.rol,
-        nombreNegocio: u.nombreNegocio,
-        negocioId: negocioId,
-      },
+    const usuarioExistente = await prisma.usuario.findUnique({
+      where: { username: u.username },
     });
-    console.log(`Usuario creado: ${u.username} / PIN: ${u.pin}`);
+
+    if (!usuarioExistente) {
+      const hashedPin = await bcrypt.hash(u.pin, 10);
+      await prisma.usuario.create({
+        data: {
+          username: u.username,
+          pin: hashedPin,
+          nombre: u.nombre,
+          rol: u.rol,
+          nombreNegocio: u.nombreNegocio,
+          negocioId: negocioId,
+        },
+      });
+      console.log(`Usuario creado: ${u.username} / PIN: ${u.pin}`);
+    } else {
+      console.log(`Usuario ya existe: ${u.username}`);
+    }
   }
 
   // Productos de ejemplo
@@ -149,12 +176,24 @@ async function main() {
   ];
 
   for (const producto of productos) {
-    await prisma.producto.create({
-      data: producto,
+    const productoExistente = await prisma.producto.findFirst({
+      where: {
+        negocioId: negocioId,
+        codigo: producto.codigo,
+      },
     });
+
+    if (!productoExistente) {
+      await prisma.producto.create({
+        data: producto,
+      });
+      console.log(`Producto creado: ${producto.codigo} - ${producto.nombre}`);
+    } else {
+      console.log(`Producto ya existe: ${producto.codigo}`);
+    }
   }
 
-  console.log(`\n${productos.length} productos de ejemplo creados en el negocio ${negocio.nombre}`);
+  console.log(`\nVerificación e inserción de datos finalizada.`);
   console.log('\n─── Credenciales de acceso ───────────────────');
   console.log('  nexora / 0000 (SUPER_ADMIN)');
   console.log('  julio  / 1083 (OWNER)');
@@ -166,7 +205,8 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.log('Seed ignorado: Los datos ya existen o hubo un error.');
+    console.error('Error durante la ejecución del seed:', e);
+    process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
