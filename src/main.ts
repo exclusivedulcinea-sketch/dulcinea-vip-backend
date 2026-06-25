@@ -6,8 +6,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // CORS: aceptar frontend en producción y localhost para desarrollo
+  const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'http://localhost:4200',
+    'https://dulcinea-vip-frontend.vercel.app',
+  ].filter(Boolean);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:4200',
+    origin: allowedOrigins,
     credentials: true,
   });
 

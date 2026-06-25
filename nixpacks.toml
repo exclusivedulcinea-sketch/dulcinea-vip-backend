@@ -2,4 +2,4 @@
 cmds = ["npm run build", "npx prisma generate"]
 
 [start]
-cmd = "npx prisma migrate deploy && node dist/main"
+cmd = "npx prisma db push && npx prisma db seed && node dist/src/main"
